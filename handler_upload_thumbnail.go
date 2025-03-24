@@ -1,10 +1,11 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -43,12 +44,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Ill-formed request", err)
 	}
 	cType := head.Header.Get("Content-Type")
-
-	content, err := io.ReadAll(data)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't load video data", err)
+	parts := strings.Split(cType, "/")
+	if len(parts) < 2 {
+		respondWithError(w, http.StatusBadRequest, "ill-formed or missing content type", fmt.Errorf("ill-formed or missing content type"))
 		return
 	}
+	fileExt := parts[len(parts)-1]
 
 	metadata, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -56,13 +57,23 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if metadata.UserID != userID {
-		respondWithError(w, http.StatusNotFound, "Unuathorized", fmt.Errorf("Unauthorized"))
+		respondWithError(w, http.StatusNotFound, "Unauthorized", fmt.Errorf("Unauthorized"))
 		return
 	}
 
-	contentb64 := base64.StdEncoding.EncodeToString(content)
+	fileName := fmt.Sprintf("assets/%s.%s", metadata.ID, fileExt)
+	file, err := os.Create(fileName)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "I/O error", err)
+		return
+	}
+	_, err = io.Copy(file, data)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "I/O error", err)
+		return
+	}
 
-	url := fmt.Sprintf("data:%s;base64,%s", cType, contentb64)
+	url := fmt.Sprintf("http://localhost:%v/%v", cfg.port, fileName)
 	metadata.ThumbnailURL = &url
 	err = cfg.db.UpdateVideo(metadata)
 	if err != nil {
