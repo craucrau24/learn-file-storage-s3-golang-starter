@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -65,7 +67,13 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fileName := fmt.Sprintf("assets/%s.%s", metadata.ID, fileExt)
+	rnd := make([]byte, 32)
+	rand.Read(rnd)
+	buf := strings.Builder{}
+	encoder := base64.NewEncoder(base64.RawURLEncoding, &buf)
+	encoder.Write(rnd)
+	encoder.Close()
+	fileName := fmt.Sprintf("assets/%s.%s", buf.String(), fileExt)
 	file, err := os.Create(fileName)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "I/O error", err)
