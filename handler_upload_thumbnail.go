@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -43,12 +45,14 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Ill-formed request", err)
 	}
-	cType := head.Header.Get("Content-Type")
-	parts := strings.Split(cType, "/")
-	if len(parts) < 2 {
-		respondWithError(w, http.StatusBadRequest, "ill-formed or missing content type", fmt.Errorf("ill-formed or missing content type"))
+	cType, _, _ := mime.ParseMediaType(head.Header.Get("Content-Type"))
+	supportedTypes := []string{"image/png", "image/jpeg"}
+	if !slices.Contains(supportedTypes, cType) {
+		respondWithError(w, http.StatusBadRequest, "ill-formed, unsupported or missing content type", fmt.Errorf("ill-formed or missing content type"))
 		return
 	}
+
+	parts := strings.Split(cType, "/")
 	fileExt := parts[len(parts)-1]
 
 	metadata, err := cfg.db.GetVideo(videoID)
