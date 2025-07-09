@@ -1,15 +1,9 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
-	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"github.com/google/uuid"
@@ -47,30 +41,6 @@ func (cfg *apiConfig) handlerVideoMetaCreate(w http.ResponseWriter, r *http.Requ
 	}
 
 	respondWithJSON(w, http.StatusCreated, video)
-}
-
-func generatePresignedURL(client *s3.Client, bucket, key string, expiry time.Duration) (string, error) {
-	preClient := s3.NewPresignClient(client)
-	url, err := preClient.PresignGetObject(context.Background(), &s3.GetObjectInput{ Key: aws.String(key), Bucket: aws.String(bucket) },s3.WithPresignExpires(expiry))
-	if err != nil {
-		return "", fmt.Errorf("error while generating presigned URL: %w", err)
-	}
-	return url.URL, nil
-}
-
-func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
-	if video.VideoURL == nil {
-		return video, nil
-	}
-
-	bucket, rem, _ := strings.Cut(*video.VideoURL, ",")
-	key, _, _ := strings.Cut(rem, ",")
-	url, err := generatePresignedURL(cfg.s3Client, bucket, key, time.Minute * 5)
-	if err != nil {
-		return video, fmt.Errorf("error while retrieve signed video")
-	}
-	video.VideoURL = &url
-	return video, nil
 }
 
 func (cfg *apiConfig) handlerVideoMetaDelete(w http.ResponseWriter, r *http.Request) {
@@ -125,12 +95,6 @@ func (cfg *apiConfig) handlerVideoGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	video, err = cfg.dbVideoToSignedVideo(video)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't sign video", err)
-		return
-	}
-
 	respondWithJSON(w, http.StatusOK, video)
 }
 
@@ -150,16 +114,6 @@ func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve videos", err)
 		return
-	}
-
-	for idx := range videos {
-		elt := &videos[idx]
-		video, err := cfg.dbVideoToSignedVideo(*elt)
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Couldn't sign video", err)
-			return
-		}
-		*elt = video
 	}
 
 	respondWithJSON(w, http.StatusOK, videos)
